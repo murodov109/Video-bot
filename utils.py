@@ -1,24 +1,28 @@
 import yt_dlp
-from aiogram import Bot
-from config import CHANNELS
+import os
+import aiofiles
+import aiohttp
 
-async def check_subscription(bot: Bot, user_id: int):
-    for channel in CHANNELS:
-        try:
-            chat_member = await bot.get_chat_member(channel, user_id)
-            if chat_member.status not in ["member", "administrator", "creator"]:
-                return False
-        except:
-            return False
-    return True
-
-def download_media(url):
+async def download_media(url):
+    output_dir = "downloads"
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
     try:
-        ydl_opts = {"outtmpl": "downloads/%(title)s.%(ext)s", "quiet": True}
+        ydl_opts = {
+            "outtmpl": f"{output_dir}/%(title)s.%(ext)s",
+            "format": "best[ext=mp4]/best",
+            "quiet": True,
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            download_url = info.get("url", None)
-            title = info.get("title", "video")
-        return download_url, title
-    except:
-        return None, None
+            info = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info)
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in [".mp4", ".mov"]:
+            return file_path, "video"
+        elif ext in [".jpg", ".png", ".jpeg", ".webp"]:
+            return file_path, "photo"
+        else:
+            return file_path, "video"
+    except Exception as e:
+        print("Download error:", e)
+        raise
