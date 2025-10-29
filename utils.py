@@ -4,30 +4,42 @@ import yt_dlp
 from pathlib import Path
 from config import DOWNLOADS_DIR, DOWNLOAD_TIMEOUT
 
-def _run_yt_dl(url, outtmpl):
+async def download_media(url):
+    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+    output_template = str(Path(DOWNLOADS_DIR) / "%(title)s.%(ext)s")
+
     ydl_opts = {
-        "outtmpl": outtmpl,
+        "outtmpl": output_template,
         "format": "bestvideo+bestaudio/best",
         "merge_output_format": "mp4",
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
+        "retries": 5,
+        "geo_bypass": True,
+        "age_limit": 0,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        },
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-    return filename
 
-async def download_media(url):
-    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
-    safe_template = str(Path(DOWNLOADS_DIR) / "%(title)s.%(ext)s")
+    def run_yt_dlp():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filepath = ydl.prepare_filename(info)
+            return filepath, info
+
     try:
-        filepath = await asyncio.to_thread(_run_yt_dl, url, safe_template)
+        filepath, info = await asyncio.wait_for(asyncio.to_thread(run_yt_dlp), timeout=DOWNLOAD_TIMEOUT)
         ext = Path(filepath).suffix.lower()
-        if ext in [".mp4", ".mkv", ".mov", ".webm"]:
-            return filepath, "video"
-        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
-            return filepath, "photo"
-        return filepath, "video"
+        if info.get("ext") in ["jpg", "jpeg", "png", "webp"]:
+            file_type = "photo"
+        elif ext in [".mp4", ".mkv", ".mov", ".webm"]:
+            file_type = "video"
+        else:
+            file_type = "video"
+        return filepath, file_type
+    except asyncio.TimeoutError:
+        raise Exception("⏱ Yuklab olish vaqti tugadi.")
     except Exception as e:
-        raise e
+        raise Exception(f"❌ Yuklab olishda xatolik: {e}")
