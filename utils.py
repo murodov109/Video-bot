@@ -1,46 +1,53 @@
-import asyncio
+import aiohttp
 import os
-import yt_dlp
 from pathlib import Path
 from config import DOWNLOADS_DIR
 
 async def download_media(url):
     os.makedirs(DOWNLOADS_DIR, exist_ok=True)
-    output_template = str(Path(DOWNLOADS_DIR) / "%(title)s.%(ext)s")
+    filename = url.split("/")[-1].split("?")[0]
+    file_path = Path(DOWNLOADS_DIR) / f"{filename}.mp4"
 
-    ydl_opts = {
-        "outtmpl": output_template,
-        "format": "bestvideo+bestaudio/best",
-        "merge_output_format": "mp4",
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": False,
-        "retries": 10,
-        "geo_bypass": True,
-        "age_limit": 0,
-        "socket_timeout": 30,
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        },
-    }
+    api_url = None
 
-    def run_dl():
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filepath = ydl.prepare_filename(info)
-            return filepath, info
+    if "tiktok" in url:
+        api_url = f"https://api.tiklydown.me/api/download?url={url}"
+    elif "instagram" in url:
+        api_url = f"https://snapinsta.app/api.php?url={url}"
+    elif "youtube" in url or "youtu.be" in url:
+        api_url = f"https://api.kenliejugarap.com/api/ytdl?url={url}"
+    elif "facebook" in url:
+        api_url = f"https://facebook-video-downloader.fly.dev/?url={url}"
 
-    try:
-        filepath, info = await asyncio.to_thread(run_dl)
-        ext = Path(filepath).suffix.lower()
-        if info.get("ext") in ["jpg", "jpeg", "png", "webp"]:
-            file_type = "photo"
-        elif ext in [".mp4", ".mkv", ".mov", ".webm"]:
-            file_type = "video"
-        else:
-            file_type = "video"
-        return filepath, file_type
+    if not api_url:
+        raise Exception("Ushbu sayt qo'llab-quvvatlanmaydi.")
 
-    except Exception as e:
-        print(f"Yuklab olish xatoligi: {e}")
-        raise Exception("Yuklab olishda xatolik yuz berdi — link bloklangan yoki fayl juda katta.")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(api_url) as resp:
+            if resp.status != 200:
+                raise Exception("API ulanishda xatolik.")
+            data = await resp.json()
+
+    video_url = None
+    image_url = None
+
+    if "download_url" in data:
+        video_url = data["download_url"]
+    elif "video" in data:
+        video_url = data["video"]
+    elif "url" in data:
+        video_url = data["url"]
+    elif "media" in data:
+        video_url = data["media"]
+
+    if not video_url:
+        raise Exception("Video havolasi topilmadi. Havola noto‘g‘ri bo‘lishi mumkin.")
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(video_url) as resp:
+            if resp.status != 200:
+                raise Exception("Video faylni yuklab bo‘lmadi.")
+            with open(file_path, "wb") as f:
+                f.write(await resp.read())
+
+    return str(file_path), "video"
