@@ -2,7 +2,7 @@ import asyncio
 import os
 import yt_dlp
 from pathlib import Path
-from config import DOWNLOADS_DIR, DOWNLOAD_TIMEOUT
+from config import DOWNLOADS_DIR
 
 async def download_media(url):
     os.makedirs(DOWNLOADS_DIR, exist_ok=True)
@@ -14,23 +14,24 @@ async def download_media(url):
         "merge_output_format": "mp4",
         "noplaylist": True,
         "quiet": True,
-        "no_warnings": True,
-        "retries": 5,
+        "no_warnings": False,
+        "retries": 10,
         "geo_bypass": True,
         "age_limit": 0,
+        "socket_timeout": 30,
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         },
     }
 
-    def run_yt_dlp():
+    def run_dl():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filepath = ydl.prepare_filename(info)
             return filepath, info
 
     try:
-        filepath, info = await asyncio.wait_for(asyncio.to_thread(run_yt_dlp), timeout=DOWNLOAD_TIMEOUT)
+        filepath, info = await asyncio.to_thread(run_dl)
         ext = Path(filepath).suffix.lower()
         if info.get("ext") in ["jpg", "jpeg", "png", "webp"]:
             file_type = "photo"
@@ -39,7 +40,7 @@ async def download_media(url):
         else:
             file_type = "video"
         return filepath, file_type
-    except asyncio.TimeoutError:
-        raise Exception("⏱ Yuklab olish vaqti tugadi.")
+
     except Exception as e:
-        raise Exception(f"❌ Yuklab olishda xatolik: {e}")
+        print(f"Yuklab olish xatoligi: {e}")
+        raise Exception("Yuklab olishda xatolik yuz berdi — link bloklangan yoki fayl juda katta.")
